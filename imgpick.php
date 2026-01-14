@@ -3,6 +3,119 @@
 // to have them copied to a directory.
 // Mark Riordan  2026-01-12  with GitHub Copilot assistance
 
+// Start session
+session_start();
+
+// Load and consolidate all JSON data from firefly_json1 directory - only once per session
+if (!isset($_SESSION['fireflyData'])) {
+    $jsonDir = 'firefly_json1';
+    $consolidatedData = [];
+
+    if (is_dir($jsonDir)) {
+        $jsonFiles = glob($jsonDir . '/*.json');
+        
+        foreach ($jsonFiles as $jsonFile) {
+            $jsonContent = file_get_contents($jsonFile);
+            if ($jsonContent !== false) {
+                $data = json_decode($jsonContent, true);
+                
+                // Extract assets from the JSON structure
+                if (isset($data['data']['homeFolder']['fireflyGenerationsDirectory']['generationAssetsConnection']['assets'])) {
+                    $assets = $data['data']['homeFolder']['fireflyGenerationsDirectory']['generationAssetsConnection']['assets'];
+                    
+                    // Add each asset node to the consolidated data array
+                    foreach ($assets as $asset) {
+                        if (isset($asset['node'])) {
+                            $consolidatedData[] = $asset['node'];
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Store consolidated data in session for reuse
+    $_SESSION['fireflyData'] = $consolidatedData;
+}
+
+// Access the consolidated data from session
+$GLOBALS['fireflyData'] = $_SESSION['fireflyData'];
+
+/**
+ * Extract rendition ID from filename
+ * Format: ...._US_<rendition_id>_version...
+ * Example: 1768273906.148771__rendition_id_urn_aaid_sc_US_b7d1c692-6022-4249-b463-65c6faacb903_version=1_size=256_type=image_2Fpng.png
+ * Returns: b7d1c692-6022-4249-b463-65c6faacb903
+ */
+function extract_rendition_id($filename) {
+    if (preg_match('/_US_([^_]+)_version/', $filename, $matches)) {
+        return $matches[1];
+    }
+    return null;
+}
+
+/**
+ * Search for asset data by rendition ID in the consolidated firefly data
+ * Returns the asset node containing the matching renditionLink.href
+ */
+function find_asset_by_rendition_id($renditionId, $fireflyData) {
+    foreach ($fireflyData as $asset) {
+        if (isset($asset['renditionLink']['href'])) {
+            $href = $asset['renditionLink']['href'];
+            // Check if the href contains the rendition ID
+            if (strpos($href, $renditionId) !== false) {
+                return $asset;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Handle image click action
+ */
+function image_click($filename) {
+    $renditionId = extract_rendition_id($filename);
+    
+    if ($renditionId === null) {
+        error_log('Could not extract rendition ID from filename: ' . $filename);
+        return [
+            'success' => false,
+            'message' => 'Could not extract rendition ID from filename',
+            'filename' => $filename
+        ];
+    }
+    
+    $fireflyData = $_SESSION['fireflyData'] ?? [];
+    $asset = find_asset_by_rendition_id($renditionId, $fireflyData);
+    
+    if ($asset === null) {
+        error_log('Asset not found for rendition ID: ' . $renditionId);
+        return [
+            'success' => false,
+            'message' => 'Asset not found for rendition ID: ' . $renditionId,
+            'filename' => $filename,
+            'renditionId' => $renditionId
+        ];
+    }
+    
+    // Extract outputComponents and revision data
+    $outputComponents = $asset['appMetadata']['am']['firefly']['outputComponents'] ?? [];
+    $renditionLink = $asset['renditionLink']['href'] ?? '';
+
+    error_log('Asset found for rendition ID: ' . $renditionId . '; outputComponents: ' . json_encode($outputComponents));
+    return [
+        'success' => true,
+        'message' => 'Asset found',
+        'filename' => $filename,
+        'renditionId' => $renditionId,
+        'renditionLink' => $renditionLink,
+        'outputComponents' => $outputComponents,
+        'assetId' => $asset['repo_assetId'] ?? '',
+        'assetName' => $asset['repo_name'] ?? ''
+    ];
+}
+
 // Handle AJAX requests
 if (isset($_POST['action']) && isset($_POST['filename'])) {
     header('Content-Type: application/json');
@@ -10,14 +123,9 @@ if (isset($_POST['action']) && isset($_POST['filename'])) {
     $action = $_POST['action'];
     $filename = $_POST['filename'];
     
-    // Placeholder function - will be filled in later
     if ($action === 'imageClick') {
-        // TODO: Implement image click handler
-        echo json_encode([
-            'success' => true,
-            'message' => 'Image click received',
-            'filename' => $filename
-        ]);
+        $result = image_click($filename);
+        echo json_encode($result);
     }
     
     exit;

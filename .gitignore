@@ -1,24 +1,7 @@
-# Composer files
-composer.phar
-vendor/
+# mrr  2026-01-13
+*.png
+*.json
 
-# Local configs
-config/autoload/*.local.php
-
-# Binary gettext files
-*.mo
-
-# Data
-data/logs/
-data/cache/
-data/sessions/
-data/tmp/
-temp/
-
-#Doctrine 2
-data/DoctrineORMModule/Proxy/
-data/DoctrineORMModule/cache/
-
-# Legacy ZF1
-demos/
-extras/documentation
+.DS_Store
+j
+*.pem

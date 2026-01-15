@@ -170,11 +170,18 @@ function download_image($asset) {
          . "&revision=" . $revision;
     error_log("ZZZ Download URL: " . $url . "\n");
     
+    // Read auth token from file
+    $authToken = @file_get_contents('authtoken.txt');
+    if ($authToken !== false) {
+        $authToken = trim($authToken);
+    } else {
+        $authToken = '';
+    }
+    
     // Prepare headers
     $headers = [
         'sec-ch-ua-platform: "macOS"',
-        // TODO: Append auth token below. In my case, it was a 1325-character string.
-        'Authorization: Bearer ',
+        'Authorization: Bearer ' . $authToken,
         'sec-ch-ua: "Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
         'sec-ch-ua-mobile: ?0',
         'X-Api-Key: clio-playground-web',

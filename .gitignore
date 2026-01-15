@@ -4,6 +4,8 @@
 
 .DS_Store
 j
+k
 *.pem
 rename.sh
 *.zip
+firefly_headers/

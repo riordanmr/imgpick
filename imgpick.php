@@ -104,6 +104,10 @@ function image_click($filename) {
     $renditionLink = $asset['renditionLink']['href'] ?? '';
 
     error_log('Asset found for rendition ID: ' . $renditionId . '; outputComponents: ' . json_encode($outputComponents));
+    
+    // Download the image
+    $downloadResult = download_image($asset);
+    
     return [
         'success' => true,
         'message' => 'Asset found',
@@ -112,7 +116,125 @@ function image_click($filename) {
         'renditionLink' => $renditionLink,
         'outputComponents' => $outputComponents,
         'assetId' => $asset['repo_assetId'] ?? '',
-        'assetName' => $asset['repo_name'] ?? ''
+        'assetName' => $asset['repo_name'] ?? '',
+        'download' => $downloadResult
+    ];
+}
+
+/**
+ * Download image from Adobe Firefly using asset data
+ * 
+ * @param array $asset The asset data containing repo_assetId, outputComponents, etc.
+ * @return array Result with success status and downloaded filename or error message
+ */
+function download_image($asset) {
+    $outputDir = 'firefly_bloopers';
+    
+    // Create output directory if it doesn't exist
+    if (!is_dir($outputDir)) {
+        mkdir($outputDir, 0755, true);
+    }
+    
+    $repoAssetId = $asset['repo_assetId'] ?? '';
+    if (empty($repoAssetId)) {
+        return [
+            'success' => false,
+            'message' => 'Missing repo_assetId in asset data'
+        ];
+    }
+    
+    $assetId = $repoAssetId;
+    
+    // Get component_id and revision from outputComponents
+    $outputComponents = $asset['appMetadata']['am']['firefly']['outputComponents'] ?? [];
+    if (empty($outputComponents)) {
+        return [
+            'success' => false,
+            'message' => 'No outputComponents found in asset data'
+        ];
+    }
+    
+    $componentId = $outputComponents[0]['componentId'] ?? '';
+    $revision = $outputComponents[0]['revision'] ?? '';
+    
+    if (empty($componentId) || empty($revision)) {
+        return [
+            'success' => false,
+            'message' => 'Missing componentId or revision in outputComponents'
+        ];
+    }
+    
+    // Construct the download URL
+    $url = "https://platform-cs-edge-va6.adobe.io/composite/component/id/" . $repoAssetId 
+         . "?component_id=" . $componentId 
+         . "&revision=" . $revision;
+    error_log("ZZZ Download URL: " . $url . "\n");
+    
+    // Prepare headers
+    $headers = [
+        'sec-ch-ua-platform: "macOS"',
+        // TODO: Append auth token below. In my case, it was a 1325-character string.
+        'Authorization: Bearer ',
+        'sec-ch-ua: "Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
+        'sec-ch-ua-mobile: ?0',
+        'X-Api-Key: clio-playground-web',
+        'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+        'DNT: 1',
+        'Client-Agent: v=2; app=Firefly/2d9b146; os=na; device=na; surface=na',
+        'Accept: */*',
+        'Origin: https://firefly.adobe.com',
+        'Sec-Fetch-Site: cross-site',
+        'Sec-Fetch-Mode: cors',
+        'Sec-Fetch-Dest: empty',
+        'Referer: https://firefly.adobe.com/'
+    ];
+    
+    // Download the file using cURL
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    
+    $imageData = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    
+    error_log("ZZZ Download result - HTTP code: " . $httpCode . ", Data length: " . (is_string($imageData) ? strlen($imageData) : 'false') . ", cURL error: " . $curlError);
+    
+    if ($imageData === false || $httpCode !== 200) {
+        error_log("ZZZ Download failed - HTTP code: " . $httpCode . ", Error: " . $curlError);
+        return [
+            'success' => false,
+            'message' => 'Failed to download image. HTTP code: ' . $httpCode . ', Error: ' . $curlError,
+            'url' => $url
+        ];
+    }
+
+    error_log("ZZZ Download successful - received " . strlen($imageData) . " bytes");
+    
+    // Generate unique filename
+    $timestamp = microtime(true);
+    $filename = $timestamp . '__' . $assetId . '.png';
+    $filepath = $outputDir . '/' . $filename;
+    
+    // Save the file
+    $result = file_put_contents($filepath, $imageData);
+    
+    if ($result === false) {
+        return [
+            'success' => false,
+            'message' => 'Failed to save image to file',
+            'filepath' => $filepath
+        ];
+    }
+    
+    return [
+        'success' => true,
+        'message' => 'Image downloaded successfully',
+        'filename' => $filename,
+        'filepath' => $filepath,
+        'url' => $url,
+        'filesize' => strlen($imageData)
     ];
 }
 

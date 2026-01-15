@@ -6,12 +6,15 @@ from mitmproxy import http
 
 OUTPUT_DIR_JSON = "firefly_json"
 OUTPUT_DIR_PNG = "firefly_png"
+OUTPUT_DIR_HEADERS = "firefly_headers"
 
 def load(l):
     if not os.path.exists(OUTPUT_DIR_JSON):
         os.makedirs(OUTPUT_DIR_JSON)
     if not os.path.exists(OUTPUT_DIR_PNG):
         os.makedirs(OUTPUT_DIR_PNG)
+    if not os.path.exists(OUTPUT_DIR_HEADERS):
+        os.makedirs(OUTPUT_DIR_HEADERS)
 
 def extract_json_from_graphql(data: str) -> str:
     """
@@ -77,6 +80,37 @@ def extract_json_from_graphql(data: str) -> str:
 
 def response(flow: http.HTTPFlow):
     print ("Response! URL: " + flow.request.url + " content-type: " + flow.response.headers.get("content-type", ""))
+   
+    # Check if response body length (download) is greater than 1800000 and save request headers
+    response_body_length = len(flow.response.content) if flow.response.content else 0
+    print("ZZZ response body length: " + str(response_body_length))
+    try:
+        if response_body_length > 1800000:
+            print ("ZZZ Got big response content: " + str(response_body_length))
+            path = flow.request.path.replace("/", "_").replace("?", "_")
+            headers_filename = f"{flow.request.timestamp_start}_{path}_headers.txt"
+            headers_filepath = os.path.join(OUTPUT_DIR_HEADERS, headers_filename)
+            
+            try:
+                with open(headers_filepath, "w", encoding="utf-8") as f:
+                    f.write(f"URL: {flow.request.url}\n")
+                    f.write(f"Method: {flow.request.method}\n")
+                    f.write(f"Response Body Length: {response_body_length}\n")
+                    f.write("\nRequest Headers:\n")
+                    f.write("-" * 50 + "\n")
+                    for name, value in flow.request.headers.items():
+                        f.write(f"{name}: {value}\n")
+                    f.write("\nResponse Headers:\n")
+                    f.write("-" * 50 + "\n")
+                    for name, value in flow.response.headers.items():
+                        f.write(f"{name}: {value}\n")
+                print(f"Saved large response headers to {headers_filepath}")
+            except Exception as e:
+                print(f"Error writing headers file {headers_filepath}: {e}")
+    except Exception as e:
+        print(f"Error checking response body length: {e}")
+    
+    # int ("Response! URL: " + flow.request.url + " content-type: " + flow.response.headers.get("content-type", ""))
    
     # Adjust this to match the Firefly API domain you see in your traffic
     # print ("pretty_host: " + flow.request.pretty_host)
